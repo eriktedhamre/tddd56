@@ -2,9 +2,12 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <malloc.h>
+#include <math.h>
 
 #include "mandelbrot.h"
 #include "ppm.h"
+
+#define MIN(a, b) a < b ? a : b
 
 #ifdef MEASURE
 #include <time.h>
@@ -33,6 +36,8 @@ struct mandelbrot_timing timing;
 #endif
 };
 
+int queue = 0;
+pthread_mutex_t queue_lock;
 int thread_stop;
 pthread_barrier_t thread_pool_barrier;
 
@@ -136,8 +141,10 @@ parallel_mandelbrot(struct mandelbrot_thread *args, struct mandelbrot_param *par
 {
 // Compiled only if LOADBALANCE = 0
 #if LOADBALANCE == 0
+
 	// Replace this code with a naive *parallel* implementation.
 	// Only thread of ID 0 compute the whole picture
+	/*
 	if(args->id == 0)
 	{
 		// Define the region compute_chunk() has to compute
@@ -151,22 +158,53 @@ parallel_mandelbrot(struct mandelbrot_thread *args, struct mandelbrot_param *par
 		// Go
 		compute_chunk(parameters);
 	}
+	*/
+	//int height, width, maxiter;
+	//color_t mandelbrot_color;
+	//float lower_r, upper_r, lower_i, upper_i;
+	//struct ppm * picture;
+	//int begin_h, end_h, begin_w, end_w;
+	//args->id
+	// Define the region compute_chunk() has to compute
+	// Entire height: from 0 to picture's height
+	int id = args->id;
+	double hchunk = (double)parameters->height/NB_THREADS;
+	parameters->begin_h = ceil(id * hchunk);
+	parameters->end_h = ceil((id + 1) * hchunk);
+	parameters->end_h = MIN(parameters->height, parameters->end_h);
+	parameters->begin_w = 0;
+	parameters->end_w = parameters->width;
+	//parameters->begin_h = 0;
+	//parameters->end_h = parameters->height;
+	// Entire width: from 0 to picture's width
+	//parameters->begin_w = 0;
+	//parameters->end_w = parameters->width;
+
+	// Go
+	compute_chunk(parameters);
+
+
+
 #endif
 // Compiled only if LOADBALANCE = 1
 #if LOADBALANCE == 1
 	// Replace this code with your load-balanced smarter solution.
 	// Only thread of ID 0 compute the whole picture
-	if(args->id == 0)
-	{
-		// Define the region compute_chunk() has to compute
-		// Entire height: from 0 to picture's height
-		parameters->begin_h = 0;
-		parameters->end_h = parameters->height;
-		// Entire width: from 0 to picture's width
-		parameters->begin_w = 0;
-		parameters->end_w = parameters->width;
-
-		// Go
+	int local_queue;
+	int max_height = parameters->height;
+	//printf("max_height: %d\n",max_height);
+	parameters->begin_w = 0;
+	parameters->end_w = parameters->width;
+	while(1){
+		pthread_mutex_lock(&queue_lock);
+		local_queue = queue++;
+		pthread_mutex_unlock(&queue_lock);
+		//printf("local_queue: %d\n",local_queue);
+		if(local_queue > max_height){
+			break;
+		}
+		parameters->begin_h = local_queue;
+		parameters->end_h = MIN(local_queue + 1, max_height + 1);
 		compute_chunk(parameters);
 	}
 #endif
@@ -248,7 +286,7 @@ run_thread(void * buffer)
 
 		// Wait for the next work signal
 		pthread_barrier_wait(&thread_pool_barrier);
-	
+
 		// Fetch the latest parameters
 		param = mandelbrot_param;
 	}
@@ -327,6 +365,11 @@ init_mandelbrot(struct mandelbrot_param *param)
 
 	pthread_attr_t thread_attr;
 	int i;
+
+	// Initialise queue_lock
+	if (pthread_mutex_init(&queue_lock, NULL) != 0) {
+		printf("queue_lock init failed\n");
+	}
 
 	// Initialise thread poll / master thread synchronisation
 	pthread_barrier_init(&thread_pool_barrier, NULL, NB_THREADS + 1);
