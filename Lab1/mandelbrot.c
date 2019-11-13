@@ -199,12 +199,13 @@ parallel_mandelbrot(struct mandelbrot_thread *args, struct mandelbrot_param *par
 		pthread_mutex_lock(&queue_lock);
 		local_queue = queue++;
 		pthread_mutex_unlock(&queue_lock);
-		//printf("local_queue: %d\n",local_queue);
-		if(local_queue > max_height){
+		//printf("local_queue: %d, thread_id: %d \n",local_queue, args->id);
+		if(local_queue >= max_height){
 			break;
 		}
 		parameters->begin_h = local_queue;
-		parameters->end_h = MIN(local_queue + 1, max_height + 1);
+		parameters->end_h = local_queue + 1;
+
 		compute_chunk(parameters);
 	}
 #endif
@@ -423,12 +424,16 @@ compute_mandelbrot(struct mandelbrot_param param)
 {
 #if NB_THREADS > 0
 	mandelbrot_param = param;
-
 	// Trigger threads' resume
 	pthread_barrier_wait(&thread_pool_barrier);
 
 	// Wait for the threads to be done
 	pthread_barrier_wait(&thread_pool_barrier);
+
+	pthread_mutex_lock(&queue_lock);
+	queue = 0;
+	pthread_mutex_unlock(&queue_lock);
+
 #else
 #ifdef MEASURE
 	clock_gettime(CLOCK_MONOTONIC, &sequential.start);
