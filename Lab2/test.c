@@ -5,20 +5,20 @@
  *  Copyright 2011 Nicolas Melot
  *
  * This file is part of TDDD56.
- * 
+ *
  *     TDDD56 is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
- * 
+ *
  *     TDDD56 is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
- * 
+ *
  *     You should have received a copy of the GNU General Public License
  *     along with TDDD56. If not, see <http://www.gnu.org/licenses/>.
- * 
+ *
  */
 
 #include <stdio.h>
@@ -80,6 +80,13 @@ assert_fun(int expr, const char *str, const char *file, const char* function, si
 		return 1;
 }
 #endif
+
+#if NON_BLOCKING == 0
+pthread_mutex_t stacklock;
+#endif
+
+int* stackHEAD;
+int* stackBOT;
 
 stack_t *stack;
 data_t data;
@@ -257,7 +264,7 @@ test_cas()
 
   counter = 0;
   pthread_attr_init(&attr);
-  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE); 
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
   pthread_mutexattr_init(&mutex_attr);
   pthread_mutex_init(&lock, &mutex_attr);
 
@@ -292,6 +299,11 @@ main(int argc, char **argv)
 {
 setbuf(stdout, NULL);
 // MEASURE == 0 -> run unit tests
+#if NON_BLOCKING == 0
+if(pthread_mutex_init(&stacklock, NULL) != 0){
+		printf("queue_lock init failed\n");
+}
+#endif
 #if MEASURE == 0
   test_init();
 

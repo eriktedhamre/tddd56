@@ -62,10 +62,10 @@ stack_check(stack_t *stack)
 }
 
 int /* Return the type you prefer */
-stack_push(/* Make your own signature */)
+stack_push(int value/* Make your own signature */)
 {
 #if NON_BLOCKING == 0
-
+	
   // Implement a lock_based stack
 #elif NON_BLOCKING == 1
   // Implement a harware CAS-based stack
