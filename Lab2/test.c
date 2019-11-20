@@ -82,11 +82,8 @@ assert_fun(int expr, const char *str, const char *file, const char* function, si
 #endif
 
 #if NON_BLOCKING == 0
-pthread_mutex_t stacklock;
+pthread_mutex_t stack_lock;
 #endif
-
-int* stackHEAD;
-int* stackBOT;
 
 stack_t *stack;
 data_t data;
@@ -154,6 +151,19 @@ test_setup()
   // Reset explicitely all members to a well-known initial value
   // For instance (to be deleted as your stack design progresses):
   stack->change_this_member = 0;
+
+  stack_push(1, stack_lock, &stack);
+  printf("head member value is %d\n",stack->change_this_member);
+  printf("prev = %d\n", stack->prev);
+  stack_push(2, stack_lock, &stack);
+  printf("head member value is %d\n",stack->change_this_member);
+  printf("prev = %d\n", stack->prev);
+  stack_push(3, stack_lock, &stack);
+  printf("head member value is %d\n",stack->change_this_member);
+  printf("prev = %d\n", stack->prev);
+  printf("popped value=%d\n", stack_pop(stack_lock, &stack));
+  printf("popped value=%d\n", stack_pop(stack_lock, &stack));
+
 }
 
 void
@@ -177,7 +187,7 @@ test_push_safe()
   // several threads push concurrently to it
 
   // Do some work
-  stack_push(/* add relevant arguments here */);
+  stack_push(1, stack_lock, &stack /* add relevant arguments here */);
 
   // check if the stack is in a consistent state
   int res = assert(stack_check(stack));
@@ -192,7 +202,8 @@ int
 test_pop_safe()
 {
   // Same as the test above for parallel pop operation
-
+	int value = stack_pop(stack_lock, &stack);
+	printf("%d", value);
   // For now, this test always fails
   return 0;
 }
@@ -300,8 +311,8 @@ main(int argc, char **argv)
 setbuf(stdout, NULL);
 // MEASURE == 0 -> run unit tests
 #if NON_BLOCKING == 0
-if(pthread_mutex_init(&stacklock, NULL) != 0){
-		printf("queue_lock init failed\n");
+if(pthread_mutex_init(&stack_lock, NULL) != 0){
+  printf("queue_lock init failed\n");
 }
 #endif
 #if MEASURE == 0
