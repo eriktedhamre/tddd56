@@ -81,10 +81,11 @@ assert_fun(int expr, const char *str, const char *file, const char* function, si
 }
 #endif
 
-#if NON_BLOCKING == 0
+//#if NON_BLOCKING == 0
 pthread_mutex_t stack_lock;
-#endif
+//#endif
 
+int queue;
 stack_t *stack;
 data_t data;
 
@@ -92,6 +93,7 @@ data_t data;
 struct stack_measure_arg
 {
   int id;
+  stack_t** stack;
 };
 typedef struct stack_measure_arg stack_measure_arg_t;
 
@@ -103,10 +105,12 @@ stack_measure_pop(void* arg)
   {
     stack_measure_arg_t *args = (stack_measure_arg_t*) arg;
     int i;
+    //stack_t* stack = *(args->stack);
 
     clock_gettime(CLOCK_MONOTONIC, &t_start[args->id]);
     for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++)
       {
+        stack_pop(stack_lock, &stack);
         // See how fast your implementation can pop MAX_PUSH_POP elements in parallel
       }
     clock_gettime(CLOCK_MONOTONIC, &t_stop[args->id]);
@@ -119,10 +123,12 @@ stack_measure_push(void* arg)
 {
   stack_measure_arg_t *args = (stack_measure_arg_t*) arg;
   int i;
+  //stack_t * stack = *(args->stack);
 
   clock_gettime(CLOCK_MONOTONIC, &t_start[args->id]);
   for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++)
     {
+        stack_push(i, stack_lock, &stack);
         // See how fast your implementation can push MAX_PUSH_POP elements in parallel
     }
   clock_gettime(CLOCK_MONOTONIC, &t_stop[args->id]);
@@ -153,16 +159,9 @@ test_setup()
   stack->change_this_member = 0;
 
   stack_push(1, stack_lock, &stack);
-  printf("head member value is %d\n",stack->change_this_member);
-  printf("prev = %d\n", stack->prev);
   stack_push(2, stack_lock, &stack);
-  printf("head member value is %d\n",stack->change_this_member);
-  printf("prev = %d\n", stack->prev);
   stack_push(3, stack_lock, &stack);
-  printf("head member value is %d\n",stack->change_this_member);
-  printf("prev = %d\n", stack->prev);
-  printf("popped value=%d\n", stack_pop(stack_lock, &stack));
-  printf("popped value=%d\n", stack_pop(stack_lock, &stack));
+  stack_push(4, stack_lock, &stack);
 
 }
 
@@ -171,6 +170,10 @@ test_teardown()
 {
   // Do not forget to free your stacks after each test
   // to avoid memory leaks
+  stack_pop(stack_lock, &stack);
+  stack_pop(stack_lock, &stack);
+  stack_pop(stack_lock, &stack);
+  stack_pop(stack_lock, &stack);
   free(stack);
 }
 
@@ -248,6 +251,7 @@ thread_test_cas(void* arg)
         old = *args->counter;
         local = old + 1;
 #if NON_BLOCKING == 1
+      printf("performed action number %d\n",i);
       } while (cas(args->counter, old, local) != old);
 #elif NON_BLOCKING == 2
       } while (software_cas(args->counter, old, local, args->lock) != old);
@@ -262,6 +266,7 @@ thread_test_cas(void* arg)
 int
 test_cas()
 {
+  printf("1");
 #if NON_BLOCKING == 1 || NON_BLOCKING == 2
   pthread_attr_t attr;
   pthread_t thread[NB_THREADS];
@@ -272,12 +277,13 @@ test_cas()
   size_t counter;
 
   int i, success;
-
+  printf("1");
   counter = 0;
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
   pthread_mutexattr_init(&mutex_attr);
   pthread_mutex_init(&lock, &mutex_attr);
+  printf("1");
 
   for (i = 0; i < NB_THREADS; i++)
     {
@@ -287,11 +293,13 @@ test_cas()
       pthread_create(&thread[i], &attr, &thread_test_cas, (void*) &args[i]);
     }
 
+    printf("1");
   for (i = 0; i < NB_THREADS; i++)
     {
       pthread_join(thread[i], NULL);
     }
 
+    printf("1");
   success = assert(counter == (size_t)(NB_THREADS * MAX_PUSH_POP));
 
   if (!success)
@@ -299,8 +307,11 @@ test_cas()
       printf("Got %ti, expected %i. ", counter, NB_THREADS * MAX_PUSH_POP);
     }
 
+    printf("1");
   return success;
 #else
+
+printf("1");
   return 1;
 #endif
 }
@@ -309,12 +320,13 @@ int
 main(int argc, char **argv)
 {
 setbuf(stdout, NULL);
+queue = 0;
 // MEASURE == 0 -> run unit tests
-#if NON_BLOCKING == 0
+//#if NON_BLOCKING == 0
 if(pthread_mutex_init(&stack_lock, NULL) != 0){
   printf("queue_lock init failed\n");
 }
-#endif
+//#endif
 #if MEASURE == 0
   test_init();
 
@@ -331,11 +343,15 @@ if(pthread_mutex_init(&stack_lock, NULL) != 0){
   pthread_attr_t attr;
   stack_measure_arg_t arg[NB_THREADS];
   pthread_attr_init(&attr);
+  for (i = 0; i <= MAX_PUSH_POP;i++){
+    stack_push(i,stack_lock, &stack);
+  }
 
   clock_gettime(CLOCK_MONOTONIC, &start);
   for (i = 0; i < NB_THREADS; i++)
     {
       arg[i].id = i;
+      //arg[i].stack = &stack;
 #if MEASURE == 1
       pthread_create(&thread[i], &attr, stack_measure_pop, (void*)&arg[i]);
 #else

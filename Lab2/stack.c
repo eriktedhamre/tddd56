@@ -56,6 +56,15 @@ stack_check(stack_t *stack)
 
 	// This test fails if the task is not allocated or if the allocation failed
 	assert(stack != NULL);
+	stack_t* current_element = stack;
+	while(1){
+		assert(current_element != NULL);
+		if(current_element->prev != NULL){
+			current_element = current_element->prev;
+		} else{
+			break;
+		}
+	}
 #endif
 
 	// The stack is always fine
@@ -74,15 +83,22 @@ stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack /* Make your o
 	stack_t* element = malloc(sizeof(stack_t));
 	element->change_this_member = value;
 	pthread_mutex_lock(&stack_lock);
-	(*stack)->next = element;
-	element->prev = *stack;
-	element->next = NULL;
+	element->next = *stack;
 	*stack = element;
+	pthread_mutex_unlock(&stack_lock);
 	printf("stack head value = %d\n", (*stack)->change_this_member);
 	printf("element value = %d\n", element->change_this_member);
-	pthread_mutex_unlock(&stack_lock);
+
 	return 0;
 #elif NON_BLOCKING == 1
+	stack_t* element = malloc(sizeof(stack_t));
+	stack_t* old;
+	element->change_this_member = value;
+	do{
+		old = *stack;
+		element->next = old;
+	} while(cas(&stack, old, element) != old);
+
   // Implement a harware CAS-based stack
 #else
   /*** Optional ***/
@@ -103,14 +119,14 @@ stack_pop(pthread_mutex_t stack_lock, stack_t** stack/* Make your own signature 
 #if NON_BLOCKING == 0
 	pthread_mutex_lock(&stack_lock);
 	int value = (*stack)->change_this_member;
-	if((*stack)->prev == NULL){
-		printf("prev =  null\n");
+	if((*stack)->next == NULL){
+		printf("next =  null\n");
 	}
-	stack_t* prev_element = (*stack)->prev;
-	prev_element->next = NULL;
+	stack_t* prev_element = (*stack)->next;
 	free(*stack);
 	*stack=prev_element;
 	pthread_mutex_unlock(&stack_lock);
+	printf("value = %d\n",value);
 	return value;
   // Implement a lock_based stack
 #elif NON_BLOCKING == 1

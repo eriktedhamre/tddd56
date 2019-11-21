@@ -32,7 +32,6 @@ struct stack
 {
 	stack_t* next;
   int change_this_member;
-	stack_t* prev;
 };
 typedef struct stack stack_t;
 
