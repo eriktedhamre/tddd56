@@ -17,44 +17,29 @@
 #include "support.h"
 
 
-unsigned char qselect(unsigned char *v, int len, int k)
-{
-#	define SWAP(a, b) { tmp = v[a]; v[a] = v[b]; v[b] = tmp; }
-	int i, st, tmp;
 
-	for (st = i = 0; i < len - 1; i++) {
-		if (v[i] > v[len-1]) continue;
-		SWAP(i, st);
-		st++;
-	}
-
-	SWAP(len-1, st);
-
-	return k == st	?v[st]
-			:st > k	? qselect(v, st, k)
-				: qselect(v + st, len - st, k - st);
-}
 
 unsigned char median_kernel(int ox, int oy, size_t stride, const unsigned char *image, size_t elemPerPx)
 {
 	//float scaling = 1.0 / ((ox/elemPerPx*2+1)*(oy*2+1));
 	float res = 0;
 	int size = (2*ox/elemPerPx+1)*(2*oy+1);
-	unsigned char element[size];
-	int i = 0;
+
+	unsigned char histogram[256];
+	for (int i = 0; i <= 255; i++) {
+		histogram[i] = 0;
+	}
 	for (int y = -oy; y <= oy; ++y)
 		for (int x = -ox; x <= ox; x += elemPerPx){
-			element[i] = image[y*(int)stride*x];
-			i++;
-			}
-
-	unsigned char element2[(2*ox/elemPerPx+1)*(2*oy+1)];
-
-
-
-	res = qselect(element, size, (2*ox/elemPerPx+1)*oy+1);
-	//return res * scaling;
-	return res;
+			histogram[image[y*(int)stride+x]]++;
+	}
+	int count = 0;
+	for (int i = 0; i <= 255; i++) {
+		count	+= histogram[i];
+		if(count >= (2*ox/elemPerPx+1)*oy+1){
+			return i;
+		}
+	}
 }
 
 

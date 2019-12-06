@@ -27,6 +27,7 @@ unsigned char average_kernel(int ox, int oy, size_t stride, const unsigned char 
 	return res * scaling;
 }
 
+//instead of looking at stride, change input parameter elemPerPx to 3 or 1 depending on which way we are computing
 unsigned char average_kernel_1d(int o, size_t stride, const unsigned char *m, size_t elemPerPx)
 {
 	float res = 0;
@@ -44,7 +45,7 @@ unsigned char average_kernel_1d(int o, size_t stride, const unsigned char *m, si
 }
 
 
-
+//instead of looking at stride, change input parameter elemPerPx to 3 or 1 depending on which way we are computing
 unsigned char gaussian_kernel(int o, size_t stride, const unsigned char *m, const skepu2::Vec<float> stencil, size_t elemPerPx)
 {
 	float res = 0;
