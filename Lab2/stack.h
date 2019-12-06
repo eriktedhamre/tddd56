@@ -35,8 +35,24 @@ struct stack
 };
 typedef struct stack stack_t;
 
-int stack_push(int, pthread_mutex_t, stack_t** /* Make your own signature */);
-int stack_pop(pthread_mutex_t, stack_t** /* Make your own signature */);
+struct aba_thread_args
+{
+  int id;
+  pthread_barrier_t *barrier1;
+  pthread_barrier_t *barrier2;
+  pthread_barrier_t *barrier3;
+  pthread_mutex_t *stack_lock;
+  stack_t **stack;
+  stack_t **free_list;
+};
+typedef struct aba_thread_args aba_thread_args_t;
+
+int stack_push(int, pthread_mutex_t, stack_t**, stack_t** /* Make your own signature */);
+int stack_pop(pthread_mutex_t, stack_t**, stack_t** /* Make your own signature */);
+
+void *thread_0_stack_pop(void *arg);
+void *thread_1_stack_pop(void *arg);
+void *thread_2_stack_pop(void *arg);
 
 /* Use this to check if your stack is in a consistent state from time to time */
 int stack_check(stack_t *stack);

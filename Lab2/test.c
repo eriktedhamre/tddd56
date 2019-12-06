@@ -27,6 +27,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <stddef.h>
+#include <semaphore.h>
 
 #include "test.h"
 #include "stack.h"
@@ -87,6 +88,7 @@ pthread_mutex_t stack_lock;
 
 int queue;
 stack_t *stack;
+stack_t *free_list;
 data_t data;
 
 #if MEASURE != 0
@@ -110,7 +112,7 @@ stack_measure_pop(void* arg)
     clock_gettime(CLOCK_MONOTONIC, &t_start[args->id]);
     for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++)
       {
-        stack_pop(stack_lock, &stack);
+        stack_pop(stack_lock, &stack, &free_list);
         // See how fast your implementation can pop MAX_PUSH_POP elements in parallel
       }
     clock_gettime(CLOCK_MONOTONIC, &t_stop[args->id]);
@@ -128,7 +130,7 @@ stack_measure_push(void* arg)
   clock_gettime(CLOCK_MONOTONIC, &t_start[args->id]);
   for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++)
     {
-        stack_push(i, stack_lock, &stack);
+        stack_push(i, stack_lock, &stack, &free_list);
         // See how fast your implementation can push MAX_PUSH_POP elements in parallel
     }
   clock_gettime(CLOCK_MONOTONIC, &t_stop[args->id]);
@@ -153,16 +155,17 @@ test_setup()
 
   // Allocate a new stack and reset its values
   stack = malloc(sizeof(stack_t));
+  free_list = malloc(sizeof(stack_t));
 
   // Reset explicitely all members to a well-known initial value
   // For instance (to be deleted as your stack design progresses):
   stack->change_this_member = 0;
-
-  stack_push(1, stack_lock, &stack);
-  stack_push(2, stack_lock, &stack);
-  stack_push(3, stack_lock, &stack);
-  stack_push(4, stack_lock, &stack);
-
+  /*
+  stack_push(1, stack_lock, &stack, &free_list);
+  stack_push(2, stack_lock, &stack, &free_list);
+  stack_push(3, stack_lock, &stack, &free_list);
+  stack_push(4, stack_lock, &stack, &free_list);
+  */
 }
 
 void
@@ -170,11 +173,16 @@ test_teardown()
 {
   // Do not forget to free your stacks after each test
   // to avoid memory leaks
-  stack_pop(stack_lock, &stack);
-  stack_pop(stack_lock, &stack);
-  stack_pop(stack_lock, &stack);
-  stack_pop(stack_lock, &stack);
+  /*
+  stack_pop(stack_lock, &stack, &free_list);
+  stack_pop(stack_lock, &stack, &free_list);
+  stack_pop(stack_lock, &stack, &free_list);
+  stack_pop(stack_lock, &stack, &free_list);
+  stack_push(1, stack_lock, &stack, &free_list);
+  stack_pop(stack_lock, &stack, &free_list);
+  */
   free(stack);
+
 }
 
 void
@@ -190,10 +198,17 @@ test_push_safe()
   // several threads push concurrently to it
 
   // Do some work
-  stack_push(1, stack_lock, &stack /* add relevant arguments here */);
+  printf("before stack_push\n");
+
+  stack_push(1, stack_lock, &stack, &free_list /* add relevant arguments here */);
+  printf("after stack_push\n");
+  stack_pop(stack_lock, &stack, &free_list);
+  printf("after stack_pop\n");
 
   // check if the stack is in a consistent state
+  printf("before stack_check assert\n");
   int res = assert(stack_check(stack));
+  printf("after stack_check assert\n");
 
   // check other properties expected after a push operation
   // (this is to be updated as your stack design progresses)
@@ -205,10 +220,12 @@ int
 test_pop_safe()
 {
   // Same as the test above for parallel pop operation
-	int value = stack_pop(stack_lock, &stack);
-	printf("%d", value);
+  stack_push(1, stack_lock, &stack, &free_list /* add relevant arguments here */);
+  int value = stack_pop(stack_lock, &stack, &free_list);
+  int res = assert(stack_check(stack));
+  printf("value = %d, res = %d, stack->member=%d\n", value, res, stack->change_this_member);
   // For now, this test always fails
-  return 0;
+  return res && assert(value == 1) && assert(stack->change_this_member == 0);
 }
 
 // 3 Threads should be enough to raise and detect the ABA problem
@@ -220,7 +237,53 @@ test_aba()
 #if NON_BLOCKING == 1 || NON_BLOCKING == 2
   int success, aba_detected = 0;
   // Write here a test for the ABA problem
+
+
+  // Populate stack
+  stack_push(2, stack_lock, &stack, &free_list);
+  stack_push(3, stack_lock, &stack, &free_list);
+  stack_push(4, stack_lock, &stack, &free_list);
+
+  // Setup 2 barriers
+  pthread_barrier_t barrier1;
+  pthread_barrier_t barrier2;
+  pthread_barrier_t barrier3;
+  pthread_barrier_init(&barrier1, NULL, ABA_NB_THREADS);
+  pthread_barrier_init(&barrier2, NULL, ABA_NB_THREADS);
+  pthread_barrier_init(&barrier3, NULL, ABA_NB_THREADS);
+
+  // Fix arguments for the threads
+  pthread_t aba_threads[ABA_NB_THREADS];
+  aba_thread_args_t arguments[ABA_NB_THREADS];
+  for (int i = 0; i < ABA_NB_THREADS; i++) {
+    arguments[i].id = i;
+    arguments[i].barrier1 = &barrier1;
+    arguments[i].barrier2 = &barrier2;
+    arguments[i].barrier3 = &barrier3;
+    arguments[i].stack_lock = &stack_lock;
+    arguments[i].stack= &stack;
+    arguments[i].free_list = &free_list;
+  }
+  //Create 3 Thread
+  pthread_create(&aba_threads[0], NULL, thread_0_stack_pop, (void*)&arguments[0]);
+  pthread_create(&aba_threads[1], NULL, thread_1_stack_pop, (void*)&arguments[1]);
+  pthread_create(&aba_threads[2], NULL, thread_2_stack_pop, (void*)&arguments[2]);
+
+  for (int t = 0; t < ABA_NB_THREADS; t++)
+	{
+		pthread_join(aba_threads[t], NULL);
+	}
+  //Barrier1 1 2
+  //0 Start Pop
+  //old_head == A, old_head == B
+  //Lock 0
+  //1 Pop A
+  //2 Pop B
+  //1 Push A
+  //0 Resume Pop
+  printf("stack value =%d\n", stack->change_this_member);
   success = aba_detected;
+  stack_check(&stack);
   return success;
 #else
   // No ABA is possible with lock-based synchronization. Let the test succeed only
@@ -266,7 +329,6 @@ thread_test_cas(void* arg)
 int
 test_cas()
 {
-  printf("1");
 #if NON_BLOCKING == 1 || NON_BLOCKING == 2
   pthread_attr_t attr;
   pthread_t thread[NB_THREADS];
@@ -277,13 +339,11 @@ test_cas()
   size_t counter;
 
   int i, success;
-  printf("1");
   counter = 0;
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
   pthread_mutexattr_init(&mutex_attr);
   pthread_mutex_init(&lock, &mutex_attr);
-  printf("1");
 
   for (i = 0; i < NB_THREADS; i++)
     {
@@ -293,13 +353,11 @@ test_cas()
       pthread_create(&thread[i], &attr, &thread_test_cas, (void*) &args[i]);
     }
 
-    printf("1");
   for (i = 0; i < NB_THREADS; i++)
     {
       pthread_join(thread[i], NULL);
     }
 
-    printf("1");
   success = assert(counter == (size_t)(NB_THREADS * MAX_PUSH_POP));
 
   if (!success)
@@ -307,11 +365,9 @@ test_cas()
       printf("Got %ti, expected %i. ", counter, NB_THREADS * MAX_PUSH_POP);
     }
 
-    printf("1");
   return success;
 #else
 
-printf("1");
   return 1;
 #endif
 }
@@ -344,7 +400,7 @@ if(pthread_mutex_init(&stack_lock, NULL) != 0){
   stack_measure_arg_t arg[NB_THREADS];
   pthread_attr_init(&attr);
   for (i = 0; i <= MAX_PUSH_POP;i++){
-    stack_push(i,stack_lock, &stack);
+    stack_push(i,stack_lock, &stack, &free_list);
   }
 
   clock_gettime(CLOCK_MONOTONIC, &start);
@@ -358,12 +414,12 @@ if(pthread_mutex_init(&stack_lock, NULL) != 0){
       pthread_create(&thread[i], &attr, stack_measure_push, (void*)&arg[i]);
 #endif
     }
-
   for (i = 0; i < NB_THREADS; i++)
     {
       pthread_join(thread[i], NULL);
     }
   clock_gettime(CLOCK_MONOTONIC, &stop);
+  stack_push(99999, stack_lock, &stack, &free_list);
 
   // Print out results
   for (i = 0; i < NB_THREADS; i++)

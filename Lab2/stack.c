@@ -57,10 +57,12 @@ stack_check(stack_t *stack)
 	// This test fails if the task is not allocated or if the allocation failed
 	assert(stack != NULL);
 	stack_t* current_element = stack;
+	printf("in stackcheck \n");
 	while(1){
 		assert(current_element != NULL);
-		if(current_element->prev != NULL){
-			current_element = current_element->prev;
+		if(current_element->next != NULL){
+			printf("value = %d\n", current_element->change_this_member);
+			current_element = current_element->next;
 		} else{
 			break;
 		}
@@ -72,17 +74,29 @@ stack_check(stack_t *stack)
 }
 
 int /* Return the type you prefer */
-stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack /* Make your own signature */)
+stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack, stack_t** free_list /* Make your own signature */)
 {
 #if NON_BLOCKING == 0
   // Implement a lock_based stack
 	if(stack == NULL){
 		return;
 	}
-	printf("pushing value %d\n", value);
-	stack_t* element = malloc(sizeof(stack_t));
-	element->change_this_member = value;
+	stack_t *element;
 	pthread_mutex_lock(&stack_lock);
+	if(*free_list == NULL){
+		printf("free_list = null\n");
+		element = malloc(sizeof(stack_t));
+	} else {
+		printf("free list != null\n");
+		element = *free_list;
+		if(element->next != NULL){
+			*free_list = element->next;
+		} else{
+			*free_list = NULL;
+		}
+	}
+	element->change_this_member = value;
+	printf("pushing value %d\n", value);
 	element->next = *stack;
 	*stack = element;
 	pthread_mutex_unlock(&stack_lock);
@@ -91,14 +105,37 @@ stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack /* Make your o
 
 	return 0;
 #elif NON_BLOCKING == 1
-	stack_t* element = malloc(sizeof(stack_t));
+	stack_t* element;
+	if(*free_list == NULL){
+		printf("free_list = null\n");
+		element = malloc(sizeof(stack_t));
+	} else {
+		printf("free_list != null\n");
+		stack_t * new;
+		do{
+			element = *free_list;
+			new = element->next;
+			new = NULL;
+			printf("element = %d, element->next=%d, new = %d\n", element, element->next, new);
+		} while(cas(free_list, element, new) != element);
+/*
+		element = *free_list;
+		if(element->next != null){
+			*free_list = element->next;
+		} else{
+			*free_list = NULL
+		}
+*/
+	}
 	stack_t* old;
 	element->change_this_member = value;
+	printf("pushing value %d\n", value);
 	do{
 		old = *stack;
 		element->next = old;
-	} while(cas(&stack, old, element) != old);
-
+	} while(cas(stack, old, element) != old);
+	printf("stack head value = %d\n", (*stack)->change_this_member);
+	printf("element value = %d\n", element->change_this_member);
   // Implement a harware CAS-based stack
 #else
   /*** Optional ***/
@@ -108,33 +145,172 @@ stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack /* Make your o
   // Debug practice: you can check if this operation results in a stack in a consistent check
   // It doesn't harm performance as sanity check are disabled at measurement time
   // This is to be updated as your implementation progresses
-  stack_check((stack_t*)1);
+  stack_check((stack_t*) *stack);
 
   return 0;
 }
 
 int /* Return the type you prefer */
-stack_pop(pthread_mutex_t stack_lock, stack_t** stack/* Make your own signature */)
+stack_pop(pthread_mutex_t stack_lock, stack_t** stack,stack_t** free_list/* Make your own signature */)
 {
 #if NON_BLOCKING == 0
+	printf("memory = %d\n", *stack);
 	pthread_mutex_lock(&stack_lock);
+	printf("in lock memory = %d\n", *stack);
 	int value = (*stack)->change_this_member;
 	if((*stack)->next == NULL){
 		printf("next =  null\n");
 	}
 	stack_t* prev_element = (*stack)->next;
-	free(*stack);
+	(*stack)->next = *free_list;
+	*free_list = *stack;
 	*stack=prev_element;
-	pthread_mutex_unlock(&stack_lock);
 	printf("value = %d\n",value);
+	pthread_mutex_unlock(&stack_lock);
 	return value;
   // Implement a lock_based stack
 #elif NON_BLOCKING == 1
+stack_t* old;
+stack_t* next_element;
+do{
+	old = *stack;
+	next_element = old->next;
+} while(cas(stack, old, next_element) != old);
+	int value = old->change_this_member;
+	printf("value = %d\n", value);
   // Implement a harware CAS-based stack
+
+	printf("pushing to free_list\n");
+	stack_t* old_free_list;
+	do{
+		old_free_list = *free_list;
+		old->next = old_free_list;
+	} while(cas(free_list, old_free_list, old) != old_free_list);
+	return value;
+
 #else
   /*** Optional ***/
   // Implement a software CAS-based stack
 #endif
 
   return 0;
+}
+
+
+void *thread_0_stack_pop(void *arg)
+{
+	aba_thread_args_t *args = (aba_thread_args_t*)arg;
+	pthread_barrier_t *barrier1 = args->barrier1;
+	pthread_barrier_t *barrier2 = args->barrier2;
+	pthread_barrier_t *barrier3 = args->barrier3;
+  pthread_mutex_t *stack_lock = args->stack_lock;
+  stack_t **stack = (args->stack);
+  stack_t **free_list = (args->free_list);
+
+	stack_t* old;
+	stack_t* next_element;
+	do{
+		old = *stack;
+		next_element = old->next;
+		printf("thread 0 barrier 1\n");
+		pthread_barrier_wait(barrier1);
+		printf("thread 0 barrier 2\n");
+		pthread_barrier_wait(barrier2);
+		printf("thread 0 barrier 3\n");
+		pthread_barrier_wait(barrier3);
+	} while(cas(stack, old, next_element) != old);
+		int value = old->change_this_member;
+		printf("value = %d\n", value);
+	  // Implement a harware CAS-based stack
+
+		printf("pushing to free_list\n");
+		stack_t* old_free_list;
+		do{
+			old_free_list = *free_list;
+			old->next = old_free_list;
+		} while(cas(free_list, old_free_list, old) != old_free_list);
+
+}
+
+void *thread_1_stack_pop(void *arg)
+{
+	aba_thread_args_t *args = (aba_thread_args_t*)arg;
+	pthread_barrier_t *barrier1 = args->barrier1;
+	pthread_barrier_t *barrier2 = args->barrier2;
+	pthread_barrier_t *barrier3 = args->barrier3;
+  pthread_mutex_t *stack_lock = args->stack_lock;
+  stack_t **stack = args->stack;
+  stack_t **free_list = args->free_list;
+
+	pthread_mutex_lock(stack_lock);
+	printf("thread 1 barrier 1\n");
+	pthread_barrier_wait(barrier1);
+	stack_t* value_to_push;
+	stack_t* old;
+	stack_t* next_element;
+	do{
+		old = value_to_push = *stack;
+		next_element = old->next;
+	} while(cas(stack, old, next_element) != old);
+		int value = old->change_this_member;
+		printf("value = %d\n", value);
+	  // Implement a harware CAS-based stack
+
+		printf("pushing to free_list\n");
+		stack_t* old_free_list;
+		do{
+			old_free_list = *free_list;
+			old->next = old_free_list;
+		} while(cas(free_list, old_free_list, old) != old_free_list);
+	pthread_mutex_unlock(stack_lock);
+	printf("thread 1 barrier 2\n");
+	pthread_barrier_wait(barrier2);
+	stack_t* element = value_to_push;
+	printf("pushing value %d\n", value);
+	do{
+		old = *stack;
+		element->next = old;
+	} while(cas(stack, old, element) != old);
+	printf("stack head value = %d\n", (*stack)->change_this_member);
+	printf("element value = %d\n", element->change_this_member);
+	printf("thread 1 barrier 3\n");
+	pthread_barrier_wait(barrier3);
+
+}
+
+void *thread_2_stack_pop(void *arg)
+{
+	aba_thread_args_t *args = (aba_thread_args_t*)arg;
+	pthread_barrier_t *barrier1 = args->barrier1;
+	pthread_barrier_t *barrier2 = args->barrier2;
+	pthread_barrier_t *barrier3 = args->barrier3;
+  pthread_mutex_t *stack_lock = args->stack_lock;
+  stack_t **stack = args->stack;
+  stack_t **free_list = args->free_list;
+
+
+	printf("thread 2 barrier 1\n");
+	pthread_barrier_wait(barrier1);
+	pthread_mutex_lock(stack_lock);
+	stack_t* old;
+	stack_t* next_element;
+	do{
+		old = *stack;
+		next_element = old->next;
+	} while(cas(stack, old, next_element) != old);
+		int value = old->change_this_member;
+		printf("value = %d\n", value);
+	  // Implement a harware CAS-based stack
+
+		printf("pushing to free_list\n");
+		stack_t* old_free_list;
+		do{
+			old_free_list = *free_list;
+			old->next = old_free_list;
+		} while(cas(free_list, old_free_list, old) != old_free_list);
+	pthread_mutex_unlock(stack_lock);
+	printf("thread 2 barrier 2\n");
+	pthread_barrier_wait(barrier2);
+	printf("thread 2 barrier 3\n");
+	pthread_barrier_wait(barrier3);
 }
