@@ -101,7 +101,7 @@ typedef struct stack_measure_arg stack_measure_arg_t;
 
 struct timespec t_start[NB_THREADS], t_stop[NB_THREADS], start, stop;
 
-#if MEASURE == 1
+#if MEASURE == 1 || MEASURE == 3
 void*
 stack_measure_pop(void* arg)
   {
@@ -119,7 +119,8 @@ stack_measure_pop(void* arg)
 
     return NULL;
   }
-#elif MEASURE == 2
+#endif
+#if MEASURE == 2 || MEASURE == 3
 void*
 stack_measure_push(void* arg)
 {
@@ -134,6 +135,14 @@ stack_measure_push(void* arg)
         // See how fast your implementation can push MAX_PUSH_POP elements in parallel
     }
   clock_gettime(CLOCK_MONOTONIC, &t_stop[args->id]);
+
+  return NULL;
+}
+#endif
+#if MEASURE == 3
+void* stack_measure_push_pop(void* arg){
+  stack_measure_push(arg);
+  stack_measure_pop(arg);
 
   return NULL;
 }
@@ -399,8 +408,16 @@ if(pthread_mutex_init(&stack_lock, NULL) != 0){
   pthread_attr_t attr;
   stack_measure_arg_t arg[NB_THREADS];
   pthread_attr_init(&attr);
+  free_list = malloc(sizeof(stack_t));
+  free_list->change_this_member = -2;
   for (i = 0; i <= MAX_PUSH_POP;i++){
     stack_push(i,stack_lock, &stack, &free_list);
+  }
+  for (i = 0; i < MAX_PUSH_POP; i++) {
+    stack_t* free_list_element = malloc(sizeof(stack_t));
+    free_list_element->next = free_list;
+    free_list_element->change_this_member = -3;
+    free_list = free_list_element;
   }
 
   clock_gettime(CLOCK_MONOTONIC, &start);
@@ -410,6 +427,8 @@ if(pthread_mutex_init(&stack_lock, NULL) != 0){
       //arg[i].stack = &stack;
 #if MEASURE == 1
       pthread_create(&thread[i], &attr, stack_measure_pop, (void*)&arg[i]);
+#elif MEASURE == 3
+      pthread_create(&thread[i], &attr, stack_measure_push_pop, (void*)&arg[i]);
 #else
       pthread_create(&thread[i], &attr, stack_measure_push, (void*)&arg[i]);
 #endif
@@ -419,8 +438,7 @@ if(pthread_mutex_init(&stack_lock, NULL) != 0){
       pthread_join(thread[i], NULL);
     }
   clock_gettime(CLOCK_MONOTONIC, &stop);
-  stack_push(99999, stack_lock, &stack, &free_list);
-
+  stack_check(stack);
   // Print out results
   for (i = 0; i < NB_THREADS; i++)
     {
