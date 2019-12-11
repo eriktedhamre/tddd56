@@ -112,7 +112,7 @@ stack_measure_pop(void* arg)
     clock_gettime(CLOCK_MONOTONIC, &t_start[args->id]);
     for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++)
       {
-        stack_pop(stack_lock, &stack, &free_list);
+        stack_pop(&stack_lock, &stack, &free_list);
         // See how fast your implementation can pop MAX_PUSH_POP elements in parallel
       }
     clock_gettime(CLOCK_MONOTONIC, &t_stop[args->id]);
@@ -131,7 +131,7 @@ stack_measure_push(void* arg)
   clock_gettime(CLOCK_MONOTONIC, &t_start[args->id]);
   for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++)
     {
-        stack_push(i, stack_lock, &stack, &free_list);
+        stack_push(i, &stack_lock, &stack, &free_list);
         // See how fast your implementation can push MAX_PUSH_POP elements in parallel
     }
   clock_gettime(CLOCK_MONOTONIC, &t_stop[args->id]);
@@ -209,9 +209,9 @@ test_push_safe()
   // Do some work
   printf("before stack_push\n");
 
-  stack_push(1, stack_lock, &stack, &free_list /* add relevant arguments here */);
+  stack_push(1, &stack_lock, &stack, &free_list /* add relevant arguments here */);
   printf("after stack_push\n");
-  stack_pop(stack_lock, &stack, &free_list);
+  stack_pop(&stack_lock, &stack, &free_list);
   printf("after stack_pop\n");
 
   // check if the stack is in a consistent state
@@ -229,8 +229,8 @@ int
 test_pop_safe()
 {
   // Same as the test above for parallel pop operation
-  stack_push(1, stack_lock, &stack, &free_list /* add relevant arguments here */);
-  int value = stack_pop(stack_lock, &stack, &free_list);
+  stack_push(1, &stack_lock, &stack, &free_list /* add relevant arguments here */);
+  int value = stack_pop(&stack_lock, &stack, &free_list);
   int res = assert(stack_check(stack));
   printf("value = %d, res = %d, stack->member=%d\n", value, res, stack->change_this_member);
   // For now, this test always fails
@@ -249,9 +249,9 @@ test_aba()
 
 
   // Populate stack
-  stack_push(2, stack_lock, &stack, &free_list);
-  stack_push(3, stack_lock, &stack, &free_list);
-  stack_push(4, stack_lock, &stack, &free_list);
+  stack_push(2, &stack_lock, &stack, &free_list);
+  stack_push(3, &stack_lock, &stack, &free_list);
+  stack_push(4, &stack_lock, &stack, &free_list);
 
   // Setup 2 barriers
   pthread_barrier_t barrier1;
@@ -411,7 +411,11 @@ if(pthread_mutex_init(&stack_lock, NULL) != 0){
   free_list = malloc(sizeof(stack_t));
   free_list->change_this_member = -2;
   for (i = 0; i <= MAX_PUSH_POP;i++){
-    stack_push(i,stack_lock, &stack, &free_list);
+    stack_push(i, &stack_lock, &stack, &free_list);
+    stack_t* free_list_element = malloc(sizeof(stack_t));
+    free_list_element->next = free_list;
+    free_list_element->change_this_member = -3;
+    free_list = free_list_element;
   }
   for (i = 0; i < MAX_PUSH_POP; i++) {
     stack_t* free_list_element = malloc(sizeof(stack_t));

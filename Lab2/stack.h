@@ -47,8 +47,8 @@ struct aba_thread_args
 };
 typedef struct aba_thread_args aba_thread_args_t;
 
-int stack_push(int, pthread_mutex_t, stack_t**, stack_t** /* Make your own signature */);
-int stack_pop(pthread_mutex_t, stack_t**, stack_t** /* Make your own signature */);
+int stack_push(int, pthread_mutex_t*, stack_t**, stack_t** /* Make your own signature */);
+int stack_pop(pthread_mutex_t*, stack_t**, stack_t** /* Make your own signature */);
 
 void *thread_0_stack_pop(void *arg);
 void *thread_1_stack_pop(void *arg);

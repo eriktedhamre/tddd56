@@ -74,28 +74,26 @@ stack_check(stack_t *stack)
 }
 
 int /* Return the type you prefer */
-stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack, stack_t** free_list /* Make your own signature */)
+stack_push(int value, pthread_mutex_t *stack_lock, stack_t** stack, stack_t** free_list /* Make your own signature */)
 {
 	if(*stack == *free_list){
 		printf("STACK == FREELIST");
 	}
 #if NON_BLOCKING == 0
   // Implement a lock_based stack
-	if(stack == NULL){
-		return;
-	}
+
 	stack_t *element;
-	pthread_mutex_lock(&stack_lock);
+	pthread_mutex_lock(stack_lock);
 	if(*free_list == NULL){
-#if MEASURE == 0
+#if MEASURE == 0 || MEASURE == 1
 		printf("free_list = null\n");
 #endif
 		element = malloc(sizeof(stack_t));
-#if MEASURE == 0
+#if MEASURE == 0 || MEASURE == 1
 		printf("malloc memory = %d\n", element);
 #endif
 	} else {
-#if MEASURE == 0
+#if MEASURE == 0 || MEASURE == 1
 		printf("*free list != null = %d\n", *free_list);
 #endif
 		element = *free_list;
@@ -106,16 +104,16 @@ stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack, stack_t** fre
 		}
 	}
 	element->change_this_member = value;
-#if MEASURE == 0
+#if MEASURE == 0 || MEASURE == 1
 	printf("pushing value %d\n", value);
 #endif
 	element->next = *stack;
 	*stack = element;
-#if MEASURE == 0
+#if MEASURE == 0 || MEASURE == 1
 	printf("unlocking push lock\n");
 #endif
-	pthread_mutex_unlock(&stack_lock);
-#if MEASURE == 0
+	pthread_mutex_unlock(stack_lock);
+#if MEASURE == 0 || MEASURE == 1
 	printf("stack head value = %d\n", (*stack)->change_this_member);
 #endif
 	return 0;
@@ -125,12 +123,12 @@ stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack, stack_t** fre
 #elif NON_BLOCKING == 1
 	stack_t* element;
 	if(*free_list == NULL){
-	#if MEASURE == 0
+	#if MEASURE == 0 || MEASURE == 1
 		printf("free_list = null\n");
 	#endif
 		element = malloc(sizeof(stack_t));
 	} else {
-	#if MEASURE == 0
+	#if MEASURE == 0 || MEASURE == 1
 		printf("free_list != null\n");
 	#endif
 		stack_t * new;
@@ -138,7 +136,7 @@ stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack, stack_t** fre
 			element = *free_list;
 			new = element->next;
 			new = NULL;
-		#if MEASURE == 0
+		#if MEASURE == 0 || MEASURE == 1
 			printf("element = %d, element->next=%d, new = %d\n", element, element->next, new);
 		#endif
 		} while(cas(free_list, element, new) != element);
@@ -153,14 +151,14 @@ stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack, stack_t** fre
 	}
 	stack_t* old;
 	element->change_this_member = value;
-#if MEASURE == 0
+#if MEASURE == 0 || MEASURE == 1
 	printf("pushing value %d\n", value);
 #endif
 	do{
 		old = *stack;
 		element->next = old;
 	} while(cas(stack, old, element) != old);
-#if MEASURE == 0
+#if MEASURE == 0 || MEASURE == 1
 	printf("stack head value = %d\n", (*stack)->change_this_member);
 	printf("element value = %d\n", element->change_this_member);
 #endif
@@ -180,17 +178,17 @@ stack_push(int value, pthread_mutex_t stack_lock, stack_t** stack, stack_t** fre
 }
 
 int /* Return the type you prefer */
-stack_pop(pthread_mutex_t stack_lock, stack_t** stack,stack_t** free_list/* Make your own signature */)
+stack_pop(pthread_mutex_t *stack_lock, stack_t** stack,stack_t** free_list/* Make your own signature */)
 {
 	if(*stack == *free_list){
 		printf("STACK == FREELIST");
 	}
 #if NON_BLOCKING == 0
-#if MEASURE == 0
+#if MEASURE == 0 || MEASURE == 1
 	printf("memory = %d\n", *stack);
 #endif
-	pthread_mutex_lock(&stack_lock);
-#if MEASURE == 0
+	pthread_mutex_lock(stack_lock);
+#if MEASURE == 0 || MEASURE == 1
 	printf("in lock memory = %d\n", *stack);
 #endif
 	int value = (*stack)->change_this_member;
@@ -203,10 +201,10 @@ stack_pop(pthread_mutex_t stack_lock, stack_t** stack,stack_t** free_list/* Make
 	(*stack)->change_this_member = -1;
 	*free_list = *stack;
 	*stack = prev_element;
-	#if MEASURE == 0
+	#if MEASURE == 0 || MEASURE == 1
 	printf("value = %d, stack->value = %d, free_list->value = %d, stack = %d, free_list = %d, stack->next = %d, free_list->next = %d\n", value, (*stack)->change_this_member, (*free_list)->change_this_member, *stack, *free_list, (*stack)->next, (*free_list)->next);
 #endif
-	pthread_mutex_unlock(&stack_lock);
+	pthread_mutex_unlock(stack_lock);
 	return value;
   // Implement a lock_based stack
 
