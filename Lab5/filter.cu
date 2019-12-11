@@ -71,51 +71,64 @@ __global__ void filterOptimized(unsigned char *image, unsigned char *out, const 
   // map from blockIdx to pixel position
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	//printf("blockIdx.x = %d, blockDim.x = %d, threadIdx.x = %d, blockIdx.y = %d, blockDim.y = %d, threadIdx.y = %d\n", blockIdx.x, blockDim.x, threadIdx.x, blockIdx.y, blockDim.y, threadIdx.y);
 
   int dy, dx;
   unsigned int sumx, sumy, sumz;
 
-  int divby = (2*kernelsizex+1)*(2*kernelsizey+1); // Works for box filters only!
-  extern __shared__ unsigned char sData[]; //size = (2*kernelsizex+1)*(2*kernelsizey+1)*3*sizeof(unsigned char)
-// use threadIdx.x and .y insetad of x and y since we are in a block that is executed on a MP?
+  //int divby = (2*kernelsizex+1)*(2*kernelsizey+1); // Works for box filters only!
+		int divby = (2*kernelsizex+1)*(2*kernelsizey+1);
+  //extern __shared__ unsigned char sData[]; //size = (2*kernelsizex+1)*(2*kernelsizey+1)*3*sizeof(unsigned char)
+		__shared__ unsigned char sData[(2*maxKernelSizeX+1)*(2*maxKernelSizeY+1)*sizeof(unsigned char)*3];
 /*
-  sData[(y*imagesizex+x)*3+0] = image[(y*imagesizex+x)*3+0];
-  sData[(y*imagesizex+x)*3+1] = image[(y*imagesizex+x)*3+1];
-  sData[(y*imagesizex+x)*3+2] = image[(y*imagesizex+x)*3+2];
+for (size_t b = 0; b < blockDim; b++) {
+		from image to local image
+		// x koordinat för lokal tråd, ii = thread.x*blockDim
+		// y koordinat för lokal tråd jj =
 
-  sData[((2*kernelsizex+1)*kernelsizey+1)*(y*imagesizex+x)*3+0] = image[(y*imagesizex+x)*3+0];
-  sData[((2*kernelsizex+1)*kernelsizey+1)*(y*imagesizex+x)*3+1] = image[(y*imagesizex+x)*3+1];
-  sData[((2*kernelsizex+1)*kernelsizey+1)*(y*imagesizex+x)*3+2] = image[(y*imagesizex+x)*3+2];
+
+}
 */
+// want to get x-threadIdx and y-threadIdy to get the values outside of the used grid
 
-// want to get x-threadidx and y-threadidy to get the values outside of the used grid
-  int imy = min(max(y-2*threadIdx.y,0), imagesizey-1);
-  int imx = min(max(x-2*threadIdx.x,0), imagesizex-1);
-  sData[(threadIdx.y*kernelsizex+threadIdx.x)*3+0] = image[(imy*imagesizex+x-2*imx)*3+0];
-  sData[(threadIdx.y*kernelsizex+threadIdx.x)*3+1] = image[(imy*imagesizex+x-2*imx)*3+1];
-  sData[(threadIdx.y*kernelsizex+threadIdx.x)*3+2] = image[(imy*imagesizex+x-2*imx)*3+2];
-
-  imy = min(max(y*imagesizex, 0), imagesizey-1);
-  imx = min(max(x,0), imagesizex-1);
-  sData[((2*kernelsizex+1)*kernelsizey+1)+(threadIdx.y*kernelsizex+threadIdx.x)*3+0] = image[(imy*imagesizex+imx)*3+0];
-  sData[((2*kernelsizex+1)*kernelsizey+1)+(threadIdx.y*kernelsizex+threadIdx.x)*3+1] = image[(imy*imagesizex+imx)*3+1];
-  sData[((2*kernelsizex+1)*kernelsizey+1)+(threadIdx.y*kernelsizex+threadIdx.x)*3+2] = image[(imy*imagesizex+imx)*3+2];
+		for (int i = -maxKernelSizeY; i <= maxKernelSizeY; i+=1) {
+			int ii = min(max(y+i,0),imagesizey-1);
+			for (int j = -maxKernelSizeX; j <= maxKernelSizeX; j+=1) {
+				int jj = min(max(x+j,0), imagesizex-1);
+				if(x==1 && y==1){
+					printf("x = %d, y = %d, ii = %d, i=%d, jj = %d, j = %d \n", x, y, ii, i, jj, j);
+				}
+				sData[((i+maxKernelSizeY)*(2*maxKernelSizeX+1)+j+maxKernelSizeX)*3+0] = image[(ii * imagesizex + jj)*3+0];
+				sData[((i+maxKernelSizeY)*(2*maxKernelSizeX+1)+j+maxKernelSizeX)*3+1] = image[(ii * imagesizex + jj)*3+1];
+				sData[((i+maxKernelSizeY)*(2*maxKernelSizeX+1)+j+maxKernelSizeX)*3+2] = image[(ii * imagesizex + jj)*3+2];
+			}
+		}
 
   __syncthreads();
+		/*
+		if(x == 1 && y == 1){
+			for (int i = 0; i < 2*maxKernelSizeY+1; i++) {
+				for (int j = 0; j < (2*maxKernelSizeX+1)*3; j++) {
+					printf("%d ",sData[i * (2*maxKernelSizeY+1) + j]);
+				}
+				printf("\n");
+			}
+		}
+		*/
   if (x < imagesizex && y < imagesizey) // If inside image
 	{
 // Filter kernel (simple box filter)
 	sumx=0;sumy=0;sumz=0;
-	for(dy=0;dy<=2*kernelsizey+1;dy++)
-		for(dx=0;dx<=2*kernelsizex+1;dx++)
+	for(dy=-kernelsizey;dy<=kernelsizey;dy++)
+		for(dx=-kernelsizex;dx<=kernelsizex;dx++)
 		{
 			// Use max and min to avoid branching!
-			int yy = min(max(threadIdx.y+dy, 0), 2*kernelsizey);
-			int xx = min(max(threadIdx.x+dx, 0), 2*kernelsizex);
+			int yy = min(max(threadIdx.y+dy, 0), 2*maxKernelSizeY);
+			int xx = min(max(threadIdx.x+dx, 0), 2*maxKernelSizeX);
 
-			sumx += sData[((yy)*imagesizex+(xx))*3+0];
-			sumy += sData[((yy)*imagesizex+(xx))*3+1];
-			sumz += sData[((yy)*imagesizex+(xx))*3+2];
+			sumx += sData[((yy)*maxKernelSizeX+(xx))*3+0];
+			sumy += sData[((yy)*maxKernelSizeX+(xx))*3+1];
+			sumz += sData[((yy)*maxKernelSizeX+(xx))*3+2];
 		}
 	out[(y*imagesizex+x)*3+0] = sumx/divby;
 	out[(y*imagesizex+x)*3+1] = sumy/divby;
@@ -141,30 +154,51 @@ void computeImages(int kernelsizex, int kernelsizey)
 		return;
 	}
 
+
+	float GPUTime, OptimizedGPUTime;
 	pixels = (unsigned char *) malloc(imagesizex*imagesizey*3);
 	cudaMalloc( (void**)&dev_input, imagesizex*imagesizey*3);
 	cudaMemcpy( dev_input, image, imagesizey*imagesizex*3, cudaMemcpyHostToDevice );
 	cudaMalloc( (void**)&dev_bitmap, imagesizex*imagesizey*3);
 	dim3 grid(imagesizex,imagesizey);
-  filter<<<grid,1>>>(dev_input, dev_bitmap, imagesizex, imagesizey, kernelsizex, kernelsizey); // Awful load balance
+	cudaEvent_t start;
+	cudaEvent_t stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+	cudaEventRecord(start, 0);
+ filter<<<grid,1>>>(dev_input, dev_bitmap, imagesizex, imagesizey, kernelsizex, kernelsizey); // Awful load balance
+	cudaEventRecord(stop, 0);
 	cudaThreadSynchronize();
+	cudaEventSynchronize(start);
+	cudaEventSynchronize(stop);
+
+	cudaEventElapsedTime(&GPUTime, start, stop);
 //	Check for errors!
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
         printf("Error: %s\n", cudaGetErrorString(err));
-	cudaMemcpy( pixels, dev_bitmap, imagesizey*imagesizex*3, cudaMemcpyDeviceToHost );
-  unsigned char* sharedData;
-  cudaMalloc((void**)&sharedData, (kernelsizex*2+1)*(kernelsizey*2+1)*3*sizeof(unsigned char));
-  filterOptimized<<<grid, 1, (kernelsizex*2+1)*(kernelsizey*2+1)*3*sizeof(unsigned char)>>>(dev_input, dev_bitmap, imagesizex, imagesizey, kernelsizex, kernelsizey);
-  cudaThreadSynchronize();
+		//cudaMemcpy( pixels, dev_bitmap, imagesizey*imagesizex*3, cudaMemcpyDeviceToHost );
+		printf("calling filterOptimized \n");
+		cudaEventRecord(start, 0);
+		dim3 block(2,2);
+  filterOptimized<<<grid, block>>>(dev_input, dev_bitmap, imagesizex, imagesizey, kernelsizex, kernelsizey);
+		cudaEventRecord(stop, 0);
+		cudaThreadSynchronize();
+		cudaEventSynchronize(start);
+		cudaEventSynchronize(stop);
+		cudaMemcpy( pixels, dev_bitmap, imagesizey*imagesizex*3, cudaMemcpyDeviceToHost );
+
+		cudaEventElapsedTime(&OptimizedGPUTime, start, stop);
+		printf("GPU time = %f ms, Optimized GPU time = %f ms\n", GPUTime, OptimizedGPUTime);
   //	Check for errors!
     err = cudaGetLastError();
     if (err != cudaSuccess)
         printf("Optimized version Error: %s\n", cudaGetErrorString(err));
-	cudaMemcpy( pixels, dev_bitmap, imagesizey*imagesizex*3, cudaMemcpyDeviceToHost );
-  cudaFree( sharedData );
-  cudaFree( dev_bitmap );
-	cudaFree( dev_input );
+
+	cudaThreadSynchronize();
+	cudaFree(dev_input);
+	cudaFree(dev_bitmap);
+
 }
 
 // Display images
@@ -210,8 +244,19 @@ int main( int argc, char** argv)
 	glutDisplayFunc(Draw);
 
 	ResetMilli();
-
+/*
+	computeImages(1, 1);
 	computeImages(2, 2);
+	computeImages(3, 3);
+	computeImages(4, 4);
+	computeImages(5, 5);
+	computeImages(6, 6);
+	computeImages(7, 7);
+	computeImages(8, 8);
+	computeImages(9, 9);
+	*/
+	computeImages(2, 2);
+
 
 // You can save the result to a file like this:
 //	writeppm("out.ppm", imagesizey, imagesizex, pixels);
