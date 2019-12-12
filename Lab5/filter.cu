@@ -78,24 +78,14 @@ __global__ void filterOptimized(unsigned char *image, unsigned char *out, const 
 
   //int divby = (2*kernelsizex+1)*(2*kernelsizey+1); // Works for box filters only!
 		int divby = (2*kernelsizex+1)*(2*kernelsizey+1);
-  //extern __shared__ unsigned char sData[]; //size = (2*kernelsizex+1)*(2*kernelsizey+1)*3*sizeof(unsigned char)
     const int sharedDataMultiple = 3;
     __shared__ unsigned char sData[(sharedDataMultiple*maxKernelSizeX+1)*(sharedDataMultiple*maxKernelSizeY+1)*sizeof(unsigned char)*3];
-/*
-for (size_t b = 0; b < blockDim; b++) {
-		from image to local image
-		// x koordinat för lokal tråd, ii = thread.x*blockDim
-		// y koordinat för lokal tråd jj =
 
-
-}
-*/
-// want to get x-threadIdx and y-threadIdy to get the values outside of the used grid
 if (x < imagesizex && y < imagesizey) // If inside image
 {
-    for (int i = -kernelsizey; i <= kernelsizey; i+=blockDim.y/2) {
+    for (int i = -kernelsizey; i <= kernelsizey; i+=max(blockDim.y/2,1)) {
 			int ii = min(max(y+i,0),imagesizey-1);
-			for (int j = -kernelsizex; j <= kernelsizex; j+=blockDim.x/2) {
+			for (int j = -kernelsizex; j <= kernelsizex; j+=max(blockDim.x/2,1)) {
 				int jj = min(max(x+j,0), imagesizex-1);
 
       	sData[((i+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+j+maxKernelSizeX+threadIdx.x)*3+0] = image[(ii * imagesizex + jj)*3+0];
@@ -135,6 +125,143 @@ if (x < imagesizex && y < imagesizey) // If inside image
 	out[(y*imagesizex+x)*3+1] = sumy/divby;
 	out[(y*imagesizex+x)*3+2] = sumz/divby;
 
+	}
+}
+__global__ void filterOptimizedGauss(unsigned char *image, unsigned char *out, const unsigned int imagesizex, const unsigned int imagesizey, const int kernelsizex, const int kernelsizey)
+{
+  // map from blockIdx to pixel position
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	//printf("blockIdx.x = %d, blockDim.x = %d, threadIdx.x = %d, blockIdx.y = %d, blockDim.y = %d, threadIdx.y = %d\n", blockIdx.x, blockDim.x, threadIdx.x, blockIdx.y, blockDim.y, threadIdx.y);
+
+  int dy, dx;
+  unsigned int sumx, sumy, sumz;
+
+  //int divby = (2*kernelsizex+1)*(2*kernelsizey+1); // Works for box filters only!
+  int weights[5] = {1, 4, 6, 4, 1};
+		int divby = 16;
+    const int sharedDataMultiple = 3;
+    __shared__ unsigned char sData[(sharedDataMultiple*maxKernelSizeX+1)*(sharedDataMultiple*maxKernelSizeY+1)*sizeof(unsigned char)*3];
+
+if (x < imagesizex && y < imagesizey) // If inside image
+{
+    for (int i = -kernelsizey; i <= kernelsizey; i+=max(blockDim.y/2,1)) {
+			int ii = min(max(y+i,0),imagesizey-1);
+			for (int j = -kernelsizex; j <= kernelsizex; j+=max(blockDim.x/2,1)) {
+				int jj = min(max(x+j,0), imagesizex-1);
+
+      	sData[((i+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+j+maxKernelSizeX+threadIdx.x)*3+0] = image[(ii * imagesizex + jj)*3+0];
+				sData[((i+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+j+maxKernelSizeX+threadIdx.x)*3+1] = image[(ii * imagesizex + jj)*3+1];
+				sData[((i+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+j+maxKernelSizeX+threadIdx.x)*3+2] = image[(ii * imagesizex + jj)*3+2];
+			}
+		}
+
+
+  __syncthreads();
+  /*
+		if(x == 1 && y == 1){
+			for (int i = 0; i < sharedDataMultiple*maxKernelSizeY+1; i++) {
+				for (int j = 0; j < (sharedDataMultiple*maxKernelSizeX+1)*3; j++) {
+					printf("%d ",sData[i * (3*maxKernelSizeY+1)*3 + j]);
+				}
+				printf("\n");
+			}
+		}
+*/
+// Filter kernel (simple box filter)
+int i, j;
+	sumx=0;sumy=0;sumz=0;
+    for(dy=-kernelsizey, i = 0;dy<=kernelsizey;dy++, i++)
+		{
+      for(dx=-kernelsizex, j = 0;dx<=kernelsizex;dx++, j++)
+  		{
+			sumx += weights[i]*weights[j]*sData[((dy+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+dx+threadIdx.x+maxKernelSizeX)*3+0];
+			sumy += weights[i]*weights[j]*sData[((dy+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+dx+threadIdx.x+maxKernelSizeX)*3+1];
+			sumz += weights[i]*weights[j]*sData[((dy+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+dx+threadIdx.x+maxKernelSizeX)*3+2];
+	    }
+  }
+	out[(y*imagesizex+x)*3+0] = sumx/divby;
+	out[(y*imagesizex+x)*3+1] = sumy/divby;
+	out[(y*imagesizex+x)*3+2] = sumz/divby;
+	}
+}
+
+__global__ void filterOptimizedMedian(unsigned char *image, unsigned char *out, const unsigned int imagesizex, const unsigned int imagesizey, const int kernelsizex, const int kernelsizey)
+{
+  // map from blockIdx to pixel position
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	//printf("blockIdx.x = %d, blockDim.x = %d, threadIdx.x = %d, blockIdx.y = %d, blockDim.y = %d, threadIdx.y = %d\n", blockIdx.x, blockDim.x, threadIdx.x, blockIdx.y, blockDim.y, threadIdx.y);
+
+  int dy, dx;
+
+  //int divby = (2*kernelsizex+1)*(2*kernelsizey+1); // Works for box filters only!
+  const int sharedDataMultiple = 3;
+  __shared__ unsigned char sData[(sharedDataMultiple*maxKernelSizeX+1)*(sharedDataMultiple*maxKernelSizeY+1)*sizeof(unsigned char)*3];
+
+if (x < imagesizex && y < imagesizey) // If inside image
+{
+    for (int i = -kernelsizey; i <= kernelsizey; i+=max(blockDim.y/2,1)) {
+			int ii = min(max(y+i,0),imagesizey-1);
+			for (int j = -kernelsizex; j <= kernelsizex; j+=max(blockDim.x/2,1)) {
+				int jj = min(max(x+j,0), imagesizex-1);
+
+      	sData[((i+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+j+maxKernelSizeX+threadIdx.x)*3+0] = image[(ii * imagesizex + jj)*3+0];
+				sData[((i+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+j+maxKernelSizeX+threadIdx.x)*3+1] = image[(ii * imagesizex + jj)*3+1];
+				sData[((i+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+j+maxKernelSizeX+threadIdx.x)*3+2] = image[(ii * imagesizex + jj)*3+2];
+			}
+		}
+
+
+  __syncthreads();
+  /*
+		if(x == 1 && y == 1){
+			for (int i = 0; i < sharedDataMultiple*maxKernelSizeY+1; i++) {
+				for (int j = 0; j < (sharedDataMultiple*maxKernelSizeX+1)*3; j++) {
+					printf("%d ",sData[i * (3*maxKernelSizeY+1)*3 + j]);
+				}
+				printf("\n");
+			}
+		}
+*/
+// Filter kernel (simple box filter)
+  unsigned char histogram[256*3];
+  for (int i = 0; i <= 767; i++) {
+    histogram[i] = 0;
+  }
+  int i, j;
+  for(dy=-kernelsizey, i = 0;dy<=kernelsizey;dy++, i++)
+	{
+    for(dx=-kernelsizex, j = 0;dx<=kernelsizex;dx++, j++)
+		{
+		histogram[sData[((dy+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+dx+threadIdx.x+maxKernelSizeX)*3+0]]++;
+		histogram[256 + sData[((dy+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+dx+threadIdx.x+maxKernelSizeX)*3+1]]++;
+		histogram[512 + sData[((dy+threadIdx.y+maxKernelSizeY)*(sharedDataMultiple*maxKernelSizeX+1)+dx+threadIdx.x+maxKernelSizeX)*3+2]]++;
+    }
+  }
+  int count = 0;
+  int median_count = ((2*kernelsizex + 1)*( 2*kernelsizey + 1))/2 + 1;
+  for (int i = 0; i <= 255; i++) {
+    count	+= histogram[i];
+    if(count >= median_count){
+        out[(y*imagesizex+x)*3+0] = i;
+        break;
+    }
+  }
+  for (int i = 0, count = 0; i <= 255; i++) {
+    count	+= histogram[256 + i];
+    if(count >= median_count){
+        out[(y*imagesizex+x)*3+1] = i;
+        break;
+    }
+  }
+  for (int i = 0, count = 0; i <= 255; i++) {
+    count	+= histogram[512 + i];
+    if(count >= median_count){
+        out[(y*imagesizex+x)*3+2] = i;
+        break;
+    }
+  }
 	}
 }
 
@@ -180,14 +307,21 @@ void computeImages(int kernelsizex, int kernelsizey)
         printf("Error: %s\n", cudaGetErrorString(err));
 		//cudaMemcpy( pixels, dev_bitmap, imagesizey*imagesizex*3, cudaMemcpyDeviceToHost );
 		printf("calling filterOptimized \n");
-		cudaEventRecord(start, 0);
     int BLOCKSIZEX = 8;
     int BLOCKSIZEY = 8;
     dim3 block(BLOCKSIZEX,BLOCKSIZEY);
     grid.x = imagesizex/BLOCKSIZEX;
     grid.y = imagesizey/BLOCKSIZEY;
-    //grid(imagesizex/2,imagesizey/2);
-  filterOptimized<<<grid, block>>>(dev_input, dev_bitmap, imagesizex, imagesizey, kernelsizex, kernelsizey);
+    unsigned char* intermediate_bitmap;
+    cudaMalloc((void**)&intermediate_bitmap, imagesizex*imagesizey*3);
+		cudaEventRecord(start, 0);
+    //filterOptimized<<<grid, block>>>(dev_input, dev_bitmap, imagesizex, imagesizey, kernelsizex, kernelsizey);
+    //filterOptimized<<<grid, block>>>(dev_input, intermediate_bitmap, imagesizex, imagesizey, kernelsizex, 1);
+    //filterOptimized<<<grid, block>>>(intermediate_bitmap, dev_bitmap, imagesizex, imagesizey, 1, kernelsizey);
+    //filterOptimizedGauss<<<grid, block>>>(dev_input, intermediate_bitmap, imagesizex, imagesizey, 2, 0);
+    //filterOptimizedGauss<<<grid, block>>>(intermediate_bitmap, dev_bitmap, imagesizex, imagesizey, 0, 2);
+    filterOptimizedMedian<<<grid, block>>>(dev_input, dev_bitmap, imagesizex, imagesizey, 2, 2);
+    //filterOptimizedMedian<<<grid, block>>>(intermediate_bitmap, dev_bitmap, imagesizex, imagesizey, 0, kernelsizey);
 		cudaEventRecord(stop, 0);
 		cudaThreadSynchronize();
 		cudaEventSynchronize(start);
@@ -240,7 +374,7 @@ int main( int argc, char** argv)
 	if (argc > 1)
 		image = readppm(argv[1], (int *)&imagesizex, (int *)&imagesizey);
 	else
-		image = readppm((char *)"maskros512.ppm", (int *)&imagesizex, (int *)&imagesizey);
+		image = readppm((char *)"maskros-noisy.ppm", (int *)&imagesizex, (int *)&imagesizey);
 
 	if (imagesizey >= imagesizex)
 		glutInitWindowSize( imagesizex*2, imagesizey );
