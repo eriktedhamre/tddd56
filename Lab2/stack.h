@@ -35,6 +35,13 @@ struct stack
 };
 typedef struct stack stack_t;
 
+struct stack_head
+{
+	stack_t* stack;
+	pthread_mutex_t* stack_lock;
+};
+typedef struct stack_head stack_head_t;
+
 struct aba_thread_args
 {
   int id;
@@ -47,8 +54,8 @@ struct aba_thread_args
 };
 typedef struct aba_thread_args aba_thread_args_t;
 
-int stack_push(int, pthread_mutex_t*, stack_t**, stack_t** /* Make your own signature */);
-int stack_pop(pthread_mutex_t*, stack_t**, stack_t** /* Make your own signature */);
+int stack_push(int, stack_head_t*, stack_t** /* Make your own signature */);
+int stack_pop(stack_head_t*, stack_t** /* Make your own signature */);
 
 void *thread_0_stack_pop(void *arg);
 void *thread_1_stack_pop(void *arg);

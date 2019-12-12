@@ -86,8 +86,8 @@ assert_fun(int expr, const char *str, const char *file, const char* function, si
 pthread_mutex_t stack_lock;
 //#endif
 
-int queue;
 stack_t *stack;
+stack_head_t *stack_head;
 stack_t *free_list;
 data_t data;
 
@@ -95,7 +95,7 @@ data_t data;
 struct stack_measure_arg
 {
   int id;
-  stack_t** stack;
+  stack_head_t* stack_head;
 };
 typedef struct stack_measure_arg stack_measure_arg_t;
 
@@ -106,13 +106,21 @@ void*
 stack_measure_pop(void* arg)
   {
     stack_measure_arg_t *args = (stack_measure_arg_t*) arg;
+    stack_head_t* stack_head = args->stack_head;
     int i;
+    stack_t *thread_free_list = malloc(sizeof(stack_t));
+    for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++) {
+      stack_t* free_list_element = malloc(sizeof(stack_t));
+      free_list_element->next = thread_free_list;
+      free_list_element->change_this_member = -3;
+      thread_free_list = free_list_element;
+    }
     //stack_t* stack = *(args->stack);
 
     clock_gettime(CLOCK_MONOTONIC, &t_start[args->id]);
     for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++)
       {
-        stack_pop(&stack_lock, &stack, &free_list);
+        stack_pop(stack_head, &thread_free_list);
         // See how fast your implementation can pop MAX_PUSH_POP elements in parallel
       }
     clock_gettime(CLOCK_MONOTONIC, &t_stop[args->id]);
@@ -125,13 +133,19 @@ void*
 stack_measure_push(void* arg)
 {
   stack_measure_arg_t *args = (stack_measure_arg_t*) arg;
+  stack_head_t* stack_head = args->stack_head;
   int i;
-  //stack_t * stack = *(args->stack);
-
+  stack_t *thread_free_list = malloc(sizeof(stack_t));
+  for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++) {
+    stack_t* free_list_element = malloc(sizeof(stack_t));
+    free_list_element->next = thread_free_list;
+    free_list_element->change_this_member = -3;
+    thread_free_list = free_list_element;
+  }
   clock_gettime(CLOCK_MONOTONIC, &t_start[args->id]);
   for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++)
     {
-        stack_push(i, &stack_lock, &stack, &free_list);
+        stack_push(i, stack_head, &thread_free_list);
         // See how fast your implementation can push MAX_PUSH_POP elements in parallel
     }
   clock_gettime(CLOCK_MONOTONIC, &t_stop[args->id]);
@@ -209,14 +223,15 @@ test_push_safe()
   // Do some work
   printf("before stack_push\n");
 
-  stack_push(1, &stack_lock, &stack, &free_list /* add relevant arguments here */);
+  stack_push(1, stack_head, &free_list /* add relevant arguments here */);
+  stack_push(2, stack_head, &free_list);
   printf("after stack_push\n");
-  stack_pop(&stack_lock, &stack, &free_list);
+  stack_pop(stack_head, &free_list);
   printf("after stack_pop\n");
 
   // check if the stack is in a consistent state
   printf("before stack_check assert\n");
-  int res = assert(stack_check(stack));
+  int res = assert(stack_check(stack_head->stack));
   printf("after stack_check assert\n");
 
   // check other properties expected after a push operation
@@ -229,9 +244,9 @@ int
 test_pop_safe()
 {
   // Same as the test above for parallel pop operation
-  stack_push(1, &stack_lock, &stack, &free_list /* add relevant arguments here */);
-  int value = stack_pop(&stack_lock, &stack, &free_list);
-  int res = assert(stack_check(stack));
+  stack_push(1, stack_head, &free_list /* add relevant arguments here */);
+  int value = stack_pop(stack_head, &free_list);
+  int res = assert(stack_check(stack_head->stack));
   printf("value = %d, res = %d, stack->member=%d\n", value, res, stack->change_this_member);
   // For now, this test always fails
   return res && assert(value == 1) && assert(stack->change_this_member == 0);
@@ -247,12 +262,24 @@ test_aba()
   int success, aba_detected = 0;
   // Write here a test for the ABA problem
 
+  stack_t* element1 = malloc(sizeof(stack_t));
+  element1->next = stack;
+  element1->change_this_member = 2;
+  stack_t* element2 = malloc(sizeof(stack_t));
+  element2->next = element1;
+  element2->change_this_member = 3;
+  stack_t* element3 = malloc(sizeof(stack_t));
+  element3->next = element2;
+  element3->change_this_member = 4;
 
+  stack = element3;
   // Populate stack
+  /*
   stack_push(2, &stack_lock, &stack, &free_list);
   stack_push(3, &stack_lock, &stack, &free_list);
   stack_push(4, &stack_lock, &stack, &free_list);
-
+*/
+stack_check(stack);
   // Setup 2 barriers
   pthread_barrier_t barrier1;
   pthread_barrier_t barrier2;
@@ -291,8 +318,9 @@ test_aba()
   //1 Push A
   //0 Resume Pop
   printf("stack value =%d\n", stack->change_this_member);
-  success = aba_detected;
-  stack_check(&stack);
+  printf("stack = %d, free_list=%d\n", stack, free_list);
+  success = (stack->next == free_list);
+  stack_check(stack);
   return success;
 #else
   // No ABA is possible with lock-based synchronization. Let the test succeed only
@@ -385,11 +413,13 @@ int
 main(int argc, char **argv)
 {
 setbuf(stdout, NULL);
-queue = 0;
+stack_head = malloc(sizeof(stack_head));
+stack_head->stack = stack;
+stack_head->stack_lock = &stack_lock;
 // MEASURE == 0 -> run unit tests
 //#if NON_BLOCKING == 0
 if(pthread_mutex_init(&stack_lock, NULL) != 0){
-  printf("queue_lock init failed\n");
+  printf("stack_lock init failed\n");
 }
 //#endif
 #if MEASURE == 0
@@ -408,27 +438,20 @@ if(pthread_mutex_init(&stack_lock, NULL) != 0){
   pthread_attr_t attr;
   stack_measure_arg_t arg[NB_THREADS];
   pthread_attr_init(&attr);
+
   free_list = malloc(sizeof(stack_t));
   free_list->change_this_member = -2;
-  for (i = 0; i <= MAX_PUSH_POP;i++){
-    stack_push(i, &stack_lock, &stack, &free_list);
-    stack_t* free_list_element = malloc(sizeof(stack_t));
-    free_list_element->next = free_list;
-    free_list_element->change_this_member = -3;
-    free_list = free_list_element;
-  }
-  for (i = 0; i < MAX_PUSH_POP; i++) {
-    stack_t* free_list_element = malloc(sizeof(stack_t));
-    free_list_element->next = free_list;
-    free_list_element->change_this_member = -3;
-    free_list = free_list_element;
+  stack_push(999, stack_head, &free_list);
+  stack_check(stack_head->stack);
+  for (int i = 0; i < MAX_PUSH_POP; i++) {
+    stack_push(i, stack_head, &free_list);
   }
 
   clock_gettime(CLOCK_MONOTONIC, &start);
   for (i = 0; i < NB_THREADS; i++)
     {
       arg[i].id = i;
-      //arg[i].stack = &stack;
+      arg[i].stack_head = stack_head;
 #if MEASURE == 1
       pthread_create(&thread[i], &attr, stack_measure_pop, (void*)&arg[i]);
 #elif MEASURE == 3
@@ -442,7 +465,7 @@ if(pthread_mutex_init(&stack_lock, NULL) != 0){
       pthread_join(thread[i], NULL);
     }
   clock_gettime(CLOCK_MONOTONIC, &stop);
-  stack_check(stack);
+  stack_check(stack_head->stack);
   // Print out results
   for (i = 0; i < NB_THREADS; i++)
     {
