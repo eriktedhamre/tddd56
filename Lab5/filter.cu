@@ -305,7 +305,7 @@ void computeImages(int kernelsizex, int kernelsizey)
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
         printf("Error: %s\n", cudaGetErrorString(err));
-		//cudaMemcpy( pixels, dev_bitmap, imagesizey*imagesizex*3, cudaMemcpyDeviceToHost );
+		cudaMemcpy( pixels, dev_bitmap, imagesizey*imagesizex*3, cudaMemcpyDeviceToHost );
 		printf("calling filterOptimized \n");
     int BLOCKSIZEX = 8;
     int BLOCKSIZEY = 8;
@@ -316,11 +316,11 @@ void computeImages(int kernelsizex, int kernelsizey)
     cudaMalloc((void**)&intermediate_bitmap, imagesizex*imagesizey*3);
 		cudaEventRecord(start, 0);
     //filterOptimized<<<grid, block>>>(dev_input, dev_bitmap, imagesizex, imagesizey, kernelsizex, kernelsizey);
-    //filterOptimized<<<grid, block>>>(dev_input, intermediate_bitmap, imagesizex, imagesizey, kernelsizex, 1);
-    //filterOptimized<<<grid, block>>>(intermediate_bitmap, dev_bitmap, imagesizex, imagesizey, 1, kernelsizey);
+    //filterOptimized<<<grid, block>>>(dev_input, intermediate_bitmap, imagesizex, imagesizey, kernelsizex, 0);
+    //filterOptimized<<<grid, block>>>(intermediate_bitmap, dev_bitmap, imagesizex, imagesizey, 0, kernelsizey);
     //filterOptimizedGauss<<<grid, block>>>(dev_input, intermediate_bitmap, imagesizex, imagesizey, 2, 0);
     //filterOptimizedGauss<<<grid, block>>>(intermediate_bitmap, dev_bitmap, imagesizex, imagesizey, 0, 2);
-    filterOptimizedMedian<<<grid, block>>>(dev_input, dev_bitmap, imagesizex, imagesizey, 2, 2);
+    filterOptimizedMedian<<<grid, block>>>(dev_input, dev_bitmap, imagesizex, imagesizey, 10, 10);
     //filterOptimizedMedian<<<grid, block>>>(intermediate_bitmap, dev_bitmap, imagesizex, imagesizey, 0, kernelsizey);
 		cudaEventRecord(stop, 0);
 		cudaThreadSynchronize();
@@ -395,7 +395,7 @@ int main( int argc, char** argv)
 	computeImages(8, 8);
 	computeImages(9, 9);
 	*/
-	computeImages(10, 10);
+	computeImages(2, 2);
 
 
 // You can save the result to a file like this:
