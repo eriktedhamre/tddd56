@@ -73,6 +73,18 @@ stack_check(stack_t *stack)
 	return 1;
 }
 
+
+// 1. Implement separate free_list for each thread;
+// 2. Implement stack_head struct, containing the lock
+// 		this way we can avoid double pointers to the stack and the free_list.
+//		and guarantee that an empty stack is NULL;
+// 2. Alternatively use a global lock
+// 3. Possibly move free_list operations into separate functions and test to guarantee correctness
+//		and increase readability
+// 4. How do we avoid mallocs
+//
+// Global stack_t [MAX_PUSH_POP]
+
 int /* Return the type you prefer */
 stack_push(int value, pthread_mutex_t *stack_lock, stack_t** stack, stack_t** free_list /* Make your own signature */)
 {
