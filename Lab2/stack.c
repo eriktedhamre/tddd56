@@ -49,7 +49,7 @@ int
 stack_check(stack_t *stack)
 {
 // Do not perform any sanity check if performance is bein measured
-#if MEASURE == 0 || MEASURE == 1
+#if MEASURE == 0
 	// Use assert() to check if your stack is in a state that makes sens
 	// This test should always pass
 	assert(1 == 1);
@@ -97,15 +97,15 @@ stack_push(int value, stack_head_t* stack_head, stack_t** free_list /* Make your
 	stack_t *element;
 	pthread_mutex_lock(stack_head->stack_lock);
 	if(*free_list == NULL){
-#if MEASURE == 0 || MEASURE == 1
+#if MEASURE == 0
 		printf("free_list = null\n");
 #endif
 		element = malloc(sizeof(stack_t));
-#if MEASURE == 0 || MEASURE == 1
+#if MEASURE == 0
 		printf("malloc memory = %d\n", element);
 #endif
 	} else {
-#if MEASURE == 0 || MEASURE == 1
+#if MEASURE == 0
 		printf("*free list != null = %d\n", *free_list);
 #endif
 		element = *free_list;
@@ -116,16 +116,16 @@ stack_push(int value, stack_head_t* stack_head, stack_t** free_list /* Make your
 		}
 	}
 	element->change_this_member = value;
-#if MEASURE == 0 || MEASURE == 1
+#if MEASURE == 0
 	printf("pushing value %d\n", value);
 #endif
 	element->next = stack_head->stack;
 	stack_head->stack = element;
-#if MEASURE == 0 || MEASURE == 1
+#if MEASURE == 0
 	printf("unlocking push lock\n");
 #endif
 	pthread_mutex_unlock(stack_head->stack_lock);
-#if MEASURE == 0 || MEASURE == 1
+#if MEASURE == 0
 	printf("stack head value = %d\n", (stack_head->stack)->change_this_member);
 #endif
 	return 0;
@@ -135,12 +135,12 @@ stack_push(int value, stack_head_t* stack_head, stack_t** free_list /* Make your
 #elif NON_BLOCKING == 1
 	stack_t* element;
 	if(*free_list == NULL){
-	#if MEASURE == 0 || MEASURE == 1
+	#if MEASURE == 0
 		printf("free_list = null\n");
 	#endif
 		element = malloc(sizeof(stack_t));
 	} else {
-	#if MEASURE == 0 || MEASURE == 1
+	#if MEASURE == 0
 		printf("free_list != null\n");
 	#endif
 		element = *free_list;
@@ -148,17 +148,17 @@ stack_push(int value, stack_head_t* stack_head, stack_t** free_list /* Make your
 	}
 	stack_t* old;
 	element->change_this_member = value;
-#if MEASURE == 0 || MEASURE == 1
+#if MEASURE == 0
 	printf("pushing value %d\n", value);
 #endif
 	do{
 		old = stack_head->stack;
 		element->next = old;
-		printf("old = %d, element=%d, stack_head->stack=%d\n", old, element, stack_head->stack);
+		//printf("old = %d, element=%d, stack_head->stack=%d\n", old, element, stack_head->stack);
 	} while(cas(&stack_head->stack, (size_t)old, (size_t)element) != old);
 
-	printf("after cas\n");
-#if MEASURE == 0 || MEASURE == 1
+	//printf("after cas\n");
+#if MEASURE == 0
 	printf("stack head= %d\n", (stack_head->stack));
 	printf("stack head value = %d\n", (stack_head->stack)->change_this_member);
 	printf("element value = %d\n", element->change_this_member);
@@ -182,11 +182,11 @@ int /* Return the type you prefer */
 stack_pop(stack_head_t *stack_head,stack_t** free_list/* Make your own signature */)
 {
 #if NON_BLOCKING == 0
-#if MEASURE == 0 || MEASURE == 1
+#if MEASURE == 0
 	printf("memory = %d\n", stack_head->stack);
 #endif
 	pthread_mutex_lock(stack_head->stack_lock);
-#if MEASURE == 0 || MEASURE == 1
+#if MEASURE == 0
 	printf("in lock memory = %d\n", stack_head->stack);
 #endif
 	if(stack_head->stack == NULL){
@@ -199,19 +199,13 @@ stack_pop(stack_head_t *stack_head,stack_t** free_list/* Make your own signature
 		printf("next =  null\n");
 		printf("value = %d, stack->value = %d, free_list->value = %d, stack = %d, free_list = %d, stack->next = %d, free_list->next = %d\n", value, (stack_head->stack)->change_this_member, (*free_list)->change_this_member, stack_head->stack, *free_list, (stack_head->stack)->next, (*free_list)->next);
 	}
-	printf("1\n");
 	stack_t* prev_element = (stack_head->stack)->next;
-	printf("2\n");
 	stack_t* old_element = stack_head->stack;
-	printf("3\n");
 	stack_head->stack = prev_element;
-	printf("4\n");
 	old_element->next = *free_list;
-	printf("5\n");
 	old_element->change_this_member = -1;
-	printf("6\n");
 	*free_list = old_element;
-	#if MEASURE == 0 || MEASURE == 1
+	#if MEASURE == 0
 	if(stack_head->stack != NULL){
 	printf("before unlock value = %d, stack->value = %d, free_list->value = %d, stack = %d, free_list = %d, stack->next = %d, free_list->next = %d\n", value, (stack_head->stack)->change_this_member, (*free_list)->change_this_member, stack_head->stack, *free_list, (stack_head->stack)->next, (*free_list)->next);
 	}
@@ -231,7 +225,7 @@ do{
 	next_element = old->next;
 } while(cas(&stack_head->stack, (size_t)old, (size_t)next_element) != old);
 	int value = old->change_this_member;
-#if MEASURE == 1
+#if MEASURE == 0
 	printf("value = %d\n", value);
 	// Implement a harware CAS-based stack
 

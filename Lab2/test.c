@@ -155,8 +155,26 @@ stack_measure_push(void* arg)
 #endif
 #if MEASURE == 3
 void* stack_measure_push_pop(void* arg){
-  stack_measure_push(arg);
-  stack_measure_pop(arg);
+  stack_measure_arg_t *args = (stack_measure_arg_t*) arg;
+  stack_head_t* stack_head = args->stack_head;
+  int i;
+  stack_t *thread_free_list = malloc(sizeof(stack_t));
+  for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++) {
+    stack_t* free_list_element = malloc(sizeof(stack_t));
+    free_list_element->next = thread_free_list;
+    free_list_element->change_this_member = -3;
+    thread_free_list = free_list_element;
+  }
+  clock_gettime(CLOCK_MONOTONIC, &t_start[args->id]);
+  for (i = 0; i < MAX_PUSH_POP / NB_THREADS; i++)
+    {
+        stack_push(i, stack_head, &thread_free_list);
+        // See how fast your implementation can push MAX_PUSH_POP elements in parallel
+    }
+    for ( i = 0; i < MAX_PUSH_POP/NB_THREADS; i++) {
+      stack_pop(stack_head, &thread_free_list);
+    }
+  clock_gettime(CLOCK_MONOTONIC, &t_stop[args->id]);
 
   return NULL;
 }
