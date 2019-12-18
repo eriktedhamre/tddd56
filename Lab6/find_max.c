@@ -3,7 +3,7 @@
 // Very close to the shell for bitonic sort.
 
 // Compilation line for Linux:
-// test$ gcc -std=c99 find_max.c -o find_max milli.c CLutilities.c -lOpenCL  -I/usr/local/cuda/include/
+// gcc -std=c99 find_max.c -o find_max milli.c CLutilities.c -lOpenCL  -I/usr/local/cuda/include/
 
 // C implementation included.
 // The OpenCL kernel is just a placeholder.
@@ -26,7 +26,7 @@
 #include "milli.h"
 
 // Size of data!
-#define kDataLength 524288
+#define kDataLength 1024
 #define MAXPRINTSIZE 16
 
 unsigned int *generateRandomData(unsigned int length)
@@ -63,9 +63,9 @@ void runKernel(cl_kernel kernel, int threads, cl_mem data, unsigned int length)
 	cl_int ciErrNum = CL_SUCCESS;
 
 	// Some reasonable number of blocks based on # of threads
-	if (threads<512) localWorkSize  = threads/4096;
-	else            localWorkSize  = threads/4096;
-		globalWorkSize = threads/4096;
+	if (threads<512) localWorkSize  = threads/32;
+	else            localWorkSize  = threads/32;
+		globalWorkSize = threads/32;
 
 	// set the args values
 	ciErrNum  = clSetKernelArg(kernel, 0, sizeof(cl_mem),  (void *) &data);

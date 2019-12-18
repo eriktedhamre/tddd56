@@ -60,22 +60,22 @@ void runKernel(cl_kernel kernel, int threads, cl_mem data, unsigned int length)
 {
 	size_t localWorkSize, globalWorkSize;
 	cl_int ciErrNum = CL_SUCCESS;
-	
+
 	// Some reasonable number of blocks based on # of threads
-	if (threads<512) localWorkSize  = threads;
-	else            localWorkSize  = 512;
-		globalWorkSize = threads;
-	
+	if (threads<512) localWorkSize  = threads/2;
+	else            localWorkSize  = 512/2;
+		globalWorkSize = threads/2;
+
 	// set the args values
 	ciErrNum  = clSetKernelArg(kernel, 0, sizeof(cl_mem),  (void *) &data);
 	ciErrNum |= clSetKernelArg(kernel, 1, sizeof(cl_uint), (void *) &length);
 	printCLError(ciErrNum,8);
-	
+
 	// Run kernel
 	cl_event event;
 	ciErrNum = clEnqueueNDRangeKernel(commandQueue, kernel, 1, NULL, &globalWorkSize, &localWorkSize, 0, NULL, &event);
 	printCLError(ciErrNum,9);
-	
+
 	// Synch
 	clWaitForEvents(1, &event);
 	printCLError(ciErrNum,10);
@@ -104,7 +104,7 @@ int bitonic_gpu(unsigned int *data, unsigned int length)
 	// Synch
 	clWaitForEvents(1, &event);
 	printCLError(ciErrNum,10);
-  
+
 	clReleaseMemObject(io_data);
 	return ciErrNum;
 }
@@ -144,14 +144,14 @@ void bitonic_cpu(unsigned int *data, int N)
 
 // ------------ main ------------
 
-int main( int argc, char** argv) 
+int main( int argc, char** argv)
 {
   int length = kDataLength; // SIZE OF DATA
   unsigned short int header[2];
-  
+
   // Computed data
   unsigned int *data_cpu, *data_gpu;
-  
+
   // Find a platform and device
   if (initOpenCL()<0)
   {
@@ -169,14 +169,20 @@ int main( int argc, char** argv)
     printf("\nError allocating data.\n\n");
     return 1;
   }
-  
+
+  for (int i=0;i<MAXPRINTSIZE;i++)
+    printf("%d ", data_cpu[i]);
+  printf("\n");
   // Copy to gpu data.
   for(int i=0;i<length;i++)
     data_gpu[i]=data_cpu[i];
-  
+
   ResetMilli();
   bitonic_cpu(data_cpu,length);
   printf("CPU %f\n", GetSeconds());
+  for (int i=0;i<MAXPRINTSIZE;i++)
+    printf("%d ", data_cpu[i]);
+  printf("\n");
 
   ResetMilli(); // You may consider moving this inside bitonic_gpu(), to skip timing of data allocation.
   bitonic_gpu(data_gpu,length);
