@@ -25,7 +25,7 @@
 #include "milli.h"
 
 // Size of data!
-#define kDataLength 1024
+#define kDataLength 2048
 #define MAXPRINTSIZE 16
 
 unsigned int *generateRandomData(unsigned int length)
@@ -56,19 +56,21 @@ unsigned int *generateRandomData(unsigned int length)
 // Kernel run conveniently packed. Edit as needed, i.e. with more parameters.
 // Only ONE array of data.
 // __kernel void sort(__global unsigned int *data, const unsigned int length)
-void runKernel(cl_kernel kernel, int threads, cl_mem data, unsigned int length)
+void runKernel(cl_kernel kernel, int threads, cl_mem data, unsigned int length, unsigned int k, unsigned int j)
 {
 	size_t localWorkSize, globalWorkSize;
 	cl_int ciErrNum = CL_SUCCESS;
 
 	// Some reasonable number of blocks based on # of threads
-	if (threads<512) localWorkSize  = threads/2;
-	else            localWorkSize  = 512/2;
-		globalWorkSize = threads/2;
+	if (threads<512) localWorkSize  = threads;
+	else            localWorkSize  = 512;
+		globalWorkSize = threads;
 
 	// set the args values
 	ciErrNum  = clSetKernelArg(kernel, 0, sizeof(cl_mem),  (void *) &data);
 	ciErrNum |= clSetKernelArg(kernel, 1, sizeof(cl_uint), (void *) &length);
+  ciErrNum |= clSetKernelArg(kernel, 2, sizeof(cl_uint), (void *) &k);
+  ciErrNum |= clSetKernelArg(kernel, 3, sizeof(cl_uint), (void *) &j);
 	printCLError(ciErrNum,8);
 
 	// Run kernel
@@ -95,8 +97,13 @@ int bitonic_gpu(unsigned int *data, unsigned int length)
 	printCLError(ciErrNum,7);
 
 	// ********** RUN THE KERNEL ************
-	runKernel(gpgpuSort, length, io_data, length);
-
+  for (int k=2;k<=length;k=2*k) // Outer loop, double size for each step
+  {
+    for (int j=k>>1;j>0;j=j>>1) // Inner loop, half size for each step
+    {
+      runKernel(gpgpuSort, length, io_data, length, k, j);
+    }
+  }
 	// Get data
 	cl_event event;
 	ciErrNum = clEnqueueReadBuffer(commandQueue, io_data, CL_TRUE, 0, length * sizeof(unsigned int), data, 0, NULL, &event);
