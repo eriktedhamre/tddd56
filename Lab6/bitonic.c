@@ -25,7 +25,7 @@
 #include "milli.h"
 
 // Size of data!
-#define kDataLength 2048
+#define kDataLength 134217728
 #define MAXPRINTSIZE 16
 
 unsigned int *generateRandomData(unsigned int length)
@@ -185,7 +185,7 @@ int main( int argc, char** argv)
     data_gpu[i]=data_cpu[i];
 
   ResetMilli();
-  bitonic_cpu(data_cpu,length);
+  //bitonic_cpu(data_cpu,length);
   printf("CPU %f\n", GetSeconds());
   for (int i=0;i<MAXPRINTSIZE;i++)
     printf("%d ", data_cpu[i]);

@@ -26,7 +26,7 @@
 #include "milli.h"
 
 // Size of data!
-#define kDataLength 1024
+#define kDataLength 1073741824
 #define MAXPRINTSIZE 16
 
 unsigned int *generateRandomData(unsigned int length)
@@ -64,7 +64,7 @@ void runKernel(cl_kernel kernel, int threads, cl_mem data, unsigned int length)
 
 	// Some reasonable number of blocks based on # of threads
 	if (threads<512) localWorkSize  = threads/32;
-	else            localWorkSize  = threads/32;
+	else            localWorkSize  = 512/32;
 		globalWorkSize = threads/32;
 
 	// set the args values

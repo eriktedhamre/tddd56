@@ -22,6 +22,7 @@ __kernel void find_max(__global unsigned int *data, const unsigned int length)
   data[id] = val;
   barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
   val = data[0];
+  //Should probably output one element per workgroup and take the max of these elements in the cpu
   if(id==0){
       for(int i = 0; i < size; i++){
         if(data[i] > val){
